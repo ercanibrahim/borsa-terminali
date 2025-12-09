@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PRO BIST ANALİZ TERMINALİ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <style>
+        /* --- YENİ ANA YAPI: THREE-COLUMN LAYOUT --- */
+        body { 
+            font-family: 'Roboto', sans-serif; 
+            background-color: #f4f7f6; 
+            color: #333; 
+            margin: 0;
+            padding: 20px;
+        }
+        .main-wrapper {
+            display: flex;
+            justify-content: center;
+            max-width: 1300px; 
+            margin: 30px auto;
+            gap: 20px;
+            align-items: flex-start;
+        }
+        .kutu {
+            width: 700px; 
+            background-color: transparent;
+            margin: 0;
+            padding: 0;
+        }
+        
+        /* SOL SÜTUN: NAVİGASYON MENÜSÜ */
+        .nav-menu-container {
+            width: 250px;
+            background: #2c3e50; 
+            color: #f0f0f0;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-height: 90vh; 
+        }
+        .nav-link-item {
+            display: block;
+            padding: 12px 10px;
+            margin: 5px 0;
+            color: #ecf0f1;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 5px;
+            transition: background-color 0.2s;
+        }
+        .nav-link-item:hover {
+            background-color: #34495e;
+        }
+        .nav-link-item.positive { border-left: 4px solid #2ecc71; }
+        .nav-link-item.negative { border-left: 4px solid #e74c3c; }
+        .nav-link-item.volume { border-left: 4px solid #f39c12; }
+
+
+        /* SAĞ SÜTUN: MARKET PANELİ */
+        .market-panel-container {
+            width: 300px;
+            background: #1e1e1e; 
+            color: #f0f0f0;
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-height: 90vh; 
+            overflow-y: auto; 
+        }
+        .market-panel-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .market-panel-item:last-child {
+            border-bottom: none;
+        }
+        .market-symbol { font-weight: bold; font-size: 14px; }
+        .market-price { font-weight: bold; font-size: 14px; }
+        .market-change { font-size: 13px; font-weight: bold; }
+        
+        /* --- KART STİLLERİ --- */
+        h2, h3, h1 { color: #2c3e50; }
+        .main-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin-bottom: 20px; border: none; }
+        .grid-container { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
+        .card { background: #f9f9f9; padding: 15px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        .label { font-size: 11px; color: #666; font-weight: 400; text-transform: uppercase; }
+        .value { font-size: 16px; font-weight: bold; color: #333; margin-top: 5px; }
+
+        /* AI ÖZETİ KUTUSU */
+        .ai-summary-box {
+            background-color: #d1ecf1; 
+            border-left: 6px solid #007bff; 
+            padding: 18px;
+            margin-top: 15px;
+            border-radius: 5px;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+        .ai-summary-box span {
+            font-weight: 700; 
+            color: #004085; 
+        }
+
+        /* DİĞER KISIMLAR */
+        #chart { margin-top: 20px; border: 1px solid #eee; padding: 10px; background: white; border-radius: 8px; }
+        .chat-container { border-top: 2px solid #ddd; }
+        #chat-box { background: white; border: 1px solid #ccc; color: #333; }
+        input[type="text"], input[type="number"] { background-color: white; color: #333; border: 1px solid #ddd; }
+        #buton { background: #2c3e50; color: white; border: none; }
+        
+        .final-score-card { 
+            color: white; 
+            text-align: center; 
+            padding: 15px; 
+            border-radius: 8px; 
+            margin-bottom: 20px;
+            margin-top: 20px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="main-wrapper">
+        
+        <div class="nav-menu-container">
+            <h3 style="color: white; margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px;">📊 PİYASA ANALİZİ</h3>
+            
+            <a href="/top_gainers" class="nav-link-item positive">🚀 Artan Hisseler</a>
+            <a href="/top_losers" class="nav-link-item negative">🔻 Azalan Hisseler</a>
+            <a href="/top_volume" class="nav-link-item volume">💰 Hacimli Hisseler</a>
+            
+        </div>
+
+
+        <div class="kutu">
+            <h2 style="text-align: center;">📈 PRO BIST ANALİZ TERMINALİ</h2>
+            
+            <form id="analysis-form" method="POST" style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <input type="text" name="sembol" placeholder="Hisse Kodu (Örn: GARAN)" required style="flex: 2; padding: 12px; border-radius: 5px;">
+                <input type="number" name="adet" placeholder="Lot" value="1" required style="width: 60px; padding: 12px; border-radius: 5px;">
+                <button type="submit" id="buton" style="flex: 1; border-radius: 5px; cursor: pointer;">ANALİZ ET</button>
+            </form>
+
+            {% if veri %}
+                {% if veri.hata %} 
+                    <div style="background: #ffebee; color: #c62828; padding: 15px; border-radius: 5px;">⚠️ {{ veri.hata }}</div>
+                {% else %}
+                    <div class="main-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                            <h1 style="margin: 0; color: #2c3e50;">{{ veri.isim }}</h1>
+                            <div style="display: flex; align-items: center;">
+                                <h1 style="margin: 0 15px 0 0; color: #27ae60;">{{ veri.fiyat }} ₺</h1>
+                                <a href="/download_csv/{{ veri.isim }}" class="btn-download" style="
+                                    background: #e67e22; 
+                                    color: white; 
+                                    padding: 5px 10px; 
+                                    border-radius: 5px; 
+                                    font-size: 12px;
+                                    text-decoration: none;
+                                    font-weight: bold;
+                                ">İNDİR (CSV)</a>
+                            </div>
+                        </div>
+                        
+                        <div class="final-score-card" style="background: 
+                            {% if veri.puan == 4 %} #27ae60 
+                            {% elif veri.puan >= 3 %} #f39c12
+                            {% elif veri.puan == 2 %} #e67e22
+                            {% else %} #c0392b
+                            {% endif %};">
+                            <div class="label" style="color: white; font-size: 14px;">ALGORİTMİK PUAN (4 Üzerinden)</div>
+                            <div style="font-size: 48px; font-weight: bold;">{{ veri.puan }}</div>
+                            <div style="font-size: 20px; font-weight: bold; margin-top: -10px;">{{ veri.sinyal_yorum }}</div>
+                        </div>
+                        
+                        {% if ai_summary %}
+                            <div class="ai-summary-box">
+                                <span>✨ AI Yorumu:</span> {{ ai_summary }}
+                            </div>
+                        {% endif %}
+
+                        <div id="chart"></div>
+
+                        <div class="grid-container">
+                            <div class="card"><div class="label">Portföy Değeri</div><div class="value" style="color: #007bff;">{{ veri.toplam_tutar }} ₺</div></div>
+                            <div class="card"><div class="label">F/K Oranı</div><div class="value">{{ veri.fk }}</div></div>
+                            <div class="card"><div class="label">P/DD Oranı</div><div class="value">{{ veri.pddd }}</div></div>
+                            
+                            <div class="card" style="border-left: 5px solid {{ veri.sinyal_rsi_renk }};">
+                                <div class="label">RSI (14g)</div>
+                                <div class="value">{{ veri.rsi }}</div>
+                            </div>
+                            <div class="card" style="border-left: 5px solid {{ veri.sinyal_macd_renk }};">
+                                <div class="label">MACD Sinyali</div>
+                                <div class="value" style="color: {{ veri.sinyal_macd_renk }};">{{ veri.sinyal_macd }}</div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endif %}
+
+            <div class="chat-container">
+                <h3 style="color: #2c3e50;">🤖 AI Borsa Asistanı (Soru-Cevap)</h3>
+                <div id="chat-box"></div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="user-input" placeholder="Finansal bir soru sor..." style="flex: 1; padding: 12px; border-radius: 5px;">
+                    <button onclick="sendMessage()" style="background: #e67e22; color: white; border: none; padding: 0 20px; border-radius: 5px; cursor: pointer;">Sor</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="market-panel-container">
+            <h3 style="color: white; margin-top: 0; border-bottom: 2px solid #333; padding-bottom: 10px;">📉 Canlı Piyasa Panel (15s)</h3>
+            <div id="market-panel-list">
+                Yükleniyor...
+            </div>
+        </div>
+
+    </div> <script>
+        // --- 1. Mum Grafiği Çizimi ---
+        const chartDataRaw = '{{ chart_data | tojson | safe }}';
+        
+        let chartData = [];
+        try {
+            if (chartDataRaw && chartDataRaw.trim() !== 'None') {
+                chartData = JSON.parse(chartDataRaw);
+            }
+        } catch (e) {
+            console.error("Grafik verisi ayrıştırılırken hata oluştu:", e);
+        }
+
+        if (chartData && chartData.length > 0) {
+            var options = {
+                series: [{ data: chartData }],
+                chart: {
+                    type: 'candlestick',
+                    height: 300,
+                    toolbar: { show: false },
+                    background: 'white', 
+                },
+                title: {
+                    text: 'Son 6 Aylık Mum Grafiği',
+                    align: 'left',
+                    style: { fontSize: '14px', color: '#2c3e50' } 
+                },
+                xaxis: {
+                    type: 'datetime',
+                    labels: { style: { colors: '#333' } } 
+                },
+                yaxis: {
+                    tooltip: { enabled: true },
+                    labels: { style: { colors: '#333' } } 
+                },
+                plotOptions: {
+                    candlestick: {
+                        colors: {
+                            up: '#2ecc71', 
+                            down: '#e74c3c' 
+                        }
+                    }
+                }
+            };
+
+            var chart = new ApexCharts(document.querySelector("#chart"), options);
+            chart.render();
+        }
+
+
+        // --- 2. AI Chatbot JS kodu ---
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const chatBox = document.getElementById('chat-box');
+            const message = input.value;
+            if (!message) return;
+
+            chatBox.innerHTML += `<div class="msg user"><b>Sen:</b> ${message}</div>`;
+            input.value = '';
+            
+            const loadingId = "loading-" + Date.now();
+            chatBox.innerHTML += `<div id="${loadingId}" class="msg bot loading">Analiz ediliyor...</div>`;
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                });
+                const data = await response.json();
+                document.getElementById(loadingId).remove();
+                chatBox.innerHTML += `<div class="msg bot"><b>AI:</b> ${data.reply}</div>`;
+            } catch (error) {
+                document.getElementById(loadingId).remove();
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        document.getElementById("user-input").addEventListener("keyup", function(event) {
+            if (event.key === "Enter") sendMessage();
+        });
+
+        // --- 3. CANLI PİYASA PANELİ JS KODU ---
+        async function fetchMarketData() {
+            const panel = document.getElementById('market-panel-list');
+            
+            try {
+                const response = await fetch('/market_summary');
+                const data = await response.json();
+                
+                if (data && data.length > 0) {
+                    let html = data.map(item => `
+                        <div class="market-panel-item">
+                            <span class="market-symbol">${item.symbol}</span>
+                            <span class="market-price">${item.price} ₺</span>
+                            <span class="market-change" style="color: ${item.color};">${item.change}</span>
+                        </div>
+                    `).join('');
+                    
+                    panel.innerHTML = html;
+                } else {
+                    panel.innerHTML = '<div style="color: #999;">Piyasa verisi çekilemedi.</div>';
+                }
+            } catch(e) {
+                 panel.innerHTML = '<div style="color: #999;">Bağlantı hatası.</div>';
+            }
+        }
+        
+        // PİYASA PANELİNİ BAŞLAT VE HER 15 SANİYEDE BİR GÜNCELLE
+        window.onload = function() {
+            fetchMarketData(); // İlk veriyi çek
+            setInterval(fetchMarketData, 15000); // Her 15 saniyede bir güncelleme
+        }
+    </script>
+</body>
+</html>
