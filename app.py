@@ -6,9 +6,7 @@ import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI (DÜZELTİLDİ) ---
-# Kanka burası artık şifreyi Render'ın ayarlarından (Environment Variables) çekiyor.
-# Kodun içine şifre yazmana gerek yok.
+# --- API AYARLARI (RENDER'DAN OKUYOR) ---
 api_key = os.environ.get("OPENROUTER_API_KEY")
 
 # Eğer Render'da OPENROUTER_API_KEY bulamazsa, OPENAI_API_KEY'e bakar (Yedek)
@@ -59,7 +57,8 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     
     try:
         completion = client.chat.completions.create(
-            model="meta-llama/llama-3.3-70b-instruct:free",
+            # DEĞİŞTİRİLDİ: Llama yerine daha stabil olan Mistral kullanılıyor
+            model="mistralai/mistral-7b-instruct:free", 
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe, **dilbilgisi ve yazım kurallarına %100 uygun** cevap ver."},
                 {"role": "user", "content": prompt}
