@@ -2,18 +2,22 @@ from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
 from openai import OpenAI
-import math 
-import os 
-# time ve datetime artık gerekli değil.
+import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI ---
-MY_API_KEY = "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"
+# --- API AYARLARI (DÜZELTİLDİ) ---
+# Kanka burası artık şifreyi Render'ın ayarlarından (Environment Variables) çekiyor.
+# Kodun içine şifre yazmana gerek yok.
+api_key = os.environ.get("OPENROUTER_API_KEY")
+
+# Eğer Render'da OPENROUTER_API_KEY bulamazsa, OPENAI_API_KEY'e bakar (Yedek)
+if not api_key:
+    api_key = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
-    api_key=MY_API_KEY,
+    api_key=api_key,
 )
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -64,7 +68,7 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
         return completion.choices[0].message.content
     except Exception as e:
         print(f"Otomatik AI Özeti Hatası: {e}")
-        return "Otomatik analiz özeti alınamadı."
+        return "Otomatik analiz özeti alınamadı (API Hatası)."
 
 
 # --- CSV İNDİRME ROUTE'U ---
@@ -92,7 +96,7 @@ def download_csv(sembol):
         return "Veri indirilirken bir hata oluştu.", 400
 
 
-# --- PİYASA ÖZETİ ÇEKME ROUTE'U (HIZLI VERSİYON) ---
+# --- PİYASA ÖZETİ ÇEKME ROUTE'U ---
 @app.route('/market_summary', methods=['GET'])
 def market_summary():
     """BIST 100 ve BIST 30 hisselerinin anlık özetini tek sorguyla çeker."""
@@ -138,7 +142,6 @@ def market_summary():
 
 # --- TOP LİSTELER İÇİN YARDIMCI FONKSİYON ---
 def get_top_list_data(reverse_sort=True, sort_by='change'):
-    """Top Gainers/Losers/Volume için ortak veri çekme ve sıralama fonksiyonu."""
     bist100_tickers = [
         'AKBNK.IS', 'ARCLK.IS', 'ASELS.IS', 'BIMAS.IS', 'EKGYO.IS', 'EREGL.IS', 'FROTO.IS', 
         'GARAN.IS', 'GOLTS.IS', 'HEKTS.IS', 'ISCTR.IS', 'KCHOL.IS', 'KOZAL.IS', 'KRDMD.IS', 
@@ -167,6 +170,7 @@ def get_top_list_data(reverse_sort=True, sort_by='change'):
                 
                 latest_volume = volume_data.iloc[-1] if not volume_data.empty else 0
                 
+                # Hacim hesaplama (Basit yaklaşım)
                 hisse_info = yf.Ticker(ticker_code).info
                 current_price_for_vol_calc = hisse_info.get('regularMarketPrice', latest_close)
                 volume_tl = latest_volume * current_price_for_vol_calc if latest_volume > 0 else 0
@@ -194,7 +198,6 @@ def get_top_list_data(reverse_sort=True, sort_by='change'):
 
 
 # --- TOP LİSTELERİN ROUTE'LARI ---
-# Not: /sector_analysis route'u stabilite için kaldırılmıştır.
 @app.route('/top_gainers')
 def top_gainers():
     data = get_top_list_data(reverse_sort=True, sort_by='change')
@@ -221,7 +224,11 @@ def home():
     if request.method == 'POST' and 'sembol' in request.form:
         try:
             sembol = request.form.get('sembol').upper()
-            lot_sayisi = int(request.form.get('adet'))
+            try:
+                lot_sayisi = int(request.form.get('adet'))
+            except:
+                lot_sayisi = 1
+
             arama_kodu = sembol if ".IS" in sembol else sembol + ".IS"
             
             hisse = yf.Ticker(arama_kodu)
@@ -233,7 +240,7 @@ def home():
             guncel_rsi = df['RSI'].iloc[-1]
             macd_data = macd_hesapla(df)
             
-            # TEMEL ANALİZ (Güvenli Kontroller)
+            # TEMEL ANALİZ
             bilgi = hisse.info
             fk_val = bilgi.get('trailingPE') 
             pddd_val = bilgi.get('priceToBook')
@@ -287,16 +294,17 @@ def home():
             }
         except Exception as e:
             print(f"Borsa Veri Hatası: {e}")
-            sonuc = {'hata': "Veri çekimi veya analizi sırasında kritik bir hata oluştu."}
-            ai_summary = "Veri çekimi veya analizi sırasında kritik bir hata oluştu."
+            sonuc = {'hata': "Hisse bulunamadı veya veri çekilemedi. Lütfen kodu kontrol edin."}
+            ai_summary = "Veri hatası."
     
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- YAPAY ZEKA ROUTE'U ---
+# --- YAPAY ZEKA ROUTE'U (CHATBOT) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     user_message = data.get('message')
+    
     try:
         completion = client.chat.completions.create(
             model="meta-llama/llama-3.3-70b-instruct:free",
@@ -307,8 +315,11 @@ def chat():
         )
         return jsonify({'reply': completion.choices[0].message.content})
     except Exception as e:
-        print(f"AI Hatası: {e}")
-        return jsonify({'reply': f"Hata: {str(e)}"})
+        print(f"AI Chat Hatası: {e}")
+        # Hata mesajını kullanıcıya daha tatlı gösterelim
+        if "401" in str(e):
+             return jsonify({'reply': "⚠️ Hata: API Anahtarı doğrulanamadı. Lütfen Render ayarlarından API anahtarının doğru girildiğinden ve boşluk içermediğinden emin olun."})
+        return jsonify({'reply': f"Bağlantı hatası: {str(e)}"})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0') # ÇOKLU CİHAZ ERİŞİMİ
+    app.run(debug=True, host='0.0.0.0')
