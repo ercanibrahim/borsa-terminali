@@ -1,0 +1,31 @@
+body {
+    background-color: #f0f2f5; /* Arka plan rengi */
+    font-family: Arial, sans-serif;
+    display: flex;
+    justify-content: center; /* Yatayda ortala */
+    align-items: center; /* Dikeyde ortala */
+    height: 100vh; /* Tüm ekranı kapla */
+    margin: 0;
+}
+
+.kutu {
+    background-color: white;
+    padding: 40px;
+    border-radius: 10px; /* Köşeleri yuvarla */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2); /* Gölge ekle */
+    text-align: center;
+}
+
+button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+button:hover {
+    background-color: #0056b3; /* Üzerine gelince rengi koyulaştır */
+}
