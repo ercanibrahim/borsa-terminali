@@ -6,15 +6,12 @@ import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI (RENDER'DAN OKUYOR) ---
-api_key = os.environ.get("OPENROUTER_API_KEY")
-
-# Eğer Render'da OPENROUTER_API_KEY bulamazsa, OPENAI_API_KEY'e bakar (Yedek)
-if not api_key:
-    api_key = os.environ.get("OPENAI_API_KEY")
+# --- API AYARLARI (DÜZELTİLDİ: DIREKT OPENAI) ---
+# Artık sadece OPENAI_API_KEY'e bakıyoruz.
+api_key = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
+    # base_url SİLİNDİ: Artık otomatik olarak OpenAI'ın kendi adresini kullanacak.
     api_key=api_key,
 )
 
@@ -57,8 +54,8 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     
     try:
         completion = client.chat.completions.create(
-            # DEĞİŞTİRİLDİ: Llama yerine daha stabil olan Mistral kullanılıyor
-            model="mistralai/mistral-7b-instruct:free", 
+            # DÜZELTİLDİ: OpenAI'da çalışan model (GPT-4o-mini veya GPT-3.5-turbo)
+            model="gpt-4o-mini", 
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe, **dilbilgisi ve yazım kurallarına %100 uygun** cevap ver."},
                 {"role": "user", "content": prompt}
@@ -306,7 +303,8 @@ def chat():
     
     try:
         completion = client.chat.completions.create(
-            model="meta-llama/llama-3.3-70b-instruct:free",
+            # DÜZELTİLDİ: OpenAI'da çalışan model
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa asistanısın. Türkçe, **dilbilgisi ve yazım kurallarına %100 uygun** cevap ver."},
                 {"role": "user", "content": user_message}
@@ -317,7 +315,7 @@ def chat():
         print(f"AI Chat Hatası: {e}")
         # Hata mesajını kullanıcıya daha tatlı gösterelim
         if "401" in str(e):
-             return jsonify({'reply': "⚠️ Hata: API Anahtarı doğrulanamadı. Lütfen Render ayarlarından API anahtarının doğru girildiğinden ve boşluk içermediğinden emin olun."})
+             return jsonify({'reply': "⚠️ Hata: API Anahtarı doğrulanamadı. Lütfen Render ayarlarından OPENAI_API_KEY'in doğru girildiğinden emin olun."})
         return jsonify({'reply': f"Bağlantı hatası: {str(e)}"})
 
 if __name__ == '__main__':
