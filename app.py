@@ -1,4 +1,3 @@
-# --- V3.0 FINAL SURUM: OPENAI GECISI TAMAMLANDI ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -7,13 +6,13 @@ import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI (DIREKT OPENAI) ---
-# Kanka burası artık tertemiz. Sadece OpenAI anahtarına bakıyor.
+# --- API AYARLARI (ZORUNLU OPENAI ADRESI) ---
+# Kanka buraya dikkat: base_url'i elle yazdim ki baska yere gidemesin.
 api_key = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(
-    # base_url yok, direkt OpenAI sunucularına bağlanır.
     api_key=api_key,
+    base_url="https://api.openai.com/v1"  # <--- BAK BURAYA ADRESI CAKTIK!
 )
 
 # --- YARDIMCI FONKSİYONLAR ---
