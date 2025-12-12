@@ -1,3 +1,4 @@
+# --- V3.0 FINAL SURUM: OPENAI GECISI TAMAMLANDI ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -6,12 +7,12 @@ import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI (DÜZELTİLDİ: DIREKT OPENAI) ---
-# Artık sadece OPENAI_API_KEY'e bakıyoruz.
+# --- API AYARLARI (DIREKT OPENAI) ---
+# Kanka burası artık tertemiz. Sadece OpenAI anahtarına bakıyor.
 api_key = os.environ.get("OPENAI_API_KEY")
 
 client = OpenAI(
-    # base_url SİLİNDİ: Artık otomatik olarak OpenAI'ın kendi adresini kullanacak.
+    # base_url yok, direkt OpenAI sunucularına bağlanır.
     api_key=api_key,
 )
 
@@ -54,7 +55,7 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     
     try:
         completion = client.chat.completions.create(
-            # DÜZELTİLDİ: OpenAI'da çalışan model (GPT-4o-mini veya GPT-3.5-turbo)
+            # MODEL: OpenAI gpt-4o-mini
             model="gpt-4o-mini", 
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe, **dilbilgisi ve yazım kurallarına %100 uygun** cevap ver."},
