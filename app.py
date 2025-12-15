@@ -1,20 +1,16 @@
-# --- V12.1 FINAL: GEMINI PRO (TAS GIBI SAGLAM) ---
+# --- V13.0 FINAL: MANUEL VITES (REST API - %100 GARANTI) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
-import google.generativeai as genai
+import requests # <--- Direkt baglanti icin
 import os
-import time
+import json
 
 app = Flask(__name__)
 
 # --- GOOGLE GEMINI AYARLARI ---
+# Render'daki 'GEMINI_API_KEY' buraya gelir
 api_key = os.environ.get("GEMINI_API_KEY")
-
-if api_key:
-    genai.configure(api_key=api_key)
-else:
-    print("UYARI: GEMINI_API_KEY bulunamadi!")
 
 # --- YARDIMCI FONKSİYONLAR ---
 def safe_format_ratio(value):
@@ -37,6 +33,33 @@ def macd_hesapla(veri, fast=12, slow=26, signal=9):
     veri['Signal_Line'] = veri['MACD_Line'].ewm(span=signal, adjust=False).mean()
     return veri
 
+# --- YENI AI FONKSIYONU (KUTUPHANESIZ - DIREKT HTTP ISTEGI) ---
+def ask_google_gemini(prompt):
+    if not api_key:
+        return "HATA: API Anahtari bulunamadi."
+    
+    # Google'in 1.5 Flash modeli icin ozel adresi
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    
+    headers = {'Content-Type': 'application/json'}
+    data = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }]
+    }
+    
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        
+        # Eger cevap basariliysa (200 OK)
+        if response.status_code == 200:
+            return response.json()['candidates'][0]['content']['parts'][0]['text']
+        else:
+            # Hata varsa detayini goster
+            return f"AI Hatası ({response.status_code}): {response.text}"
+    except Exception as e:
+        return f"Baglanti Hatasi: {str(e)}"
+
 def get_ai_summary(sembol, puan, rsi, fk, pddd):
     prompt = f"""
     Sen uzman bir Borsa ve Temel/Teknik analistsin. Sadece Türkçe, kesin, mantıklı ve tek bir paragraf halinde, 60 kelimeyi geçmeyecek şekilde şu analiz sonuçlarını yorumla:
@@ -47,14 +70,9 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     P/DD Oranı: {pddd}
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
-    try:
-        # MODEL: gemini-pro (En klasik ve saglam olani)
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"Sen borsa uzmanısın. {prompt}")
-        return response.text
-    except Exception as e:
-        print(f"AI Hatasi: {e}")
-        return "Otomatik analiz özeti alınamadı."
+    # Yeni fonksiyonu kullaniyoruz
+    ai_response = ask_google_gemini(f"Sen borsa uzmanısın. {prompt}")
+    return ai_response
 
 # --- ROUTE'LAR ---
 @app.route('/download_csv/<sembol>')
@@ -160,20 +178,16 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (NATIVE GEMINI PRO) ---
+# --- CHATBOT ROUTE (DIRECT REST API) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
-    try:
-        # MODEL: gemini-pro
-        model = genai.GenerativeModel('gemini-pro')
-        response = model.generate_content(f"Sen borsa asistanısın. Türkçe konuş. {data.get('message')}")
-        return jsonify({'reply': response.text})
-    except Exception as e:
-        error_msg = str(e)
-        if "401" in error_msg or "API_KEY" in error_msg: 
-             return jsonify({'reply': "⚠️ HATA: Render'da 'GEMINI_API_KEY' bulunamadı!"})
-        return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
+    user_message = data.get('message')
+    
+    # Yeni manuel fonksiyonu cagiriyoruz
+    ai_reply = ask_google_gemini(f"Sen borsa asistanısın. Türkçe konuş. {user_message}")
+    
+    return jsonify({'reply': ai_reply})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
