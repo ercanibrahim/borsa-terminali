@@ -1,4 +1,4 @@
-# --- V7.0 FINAL: OPENROUTER DONUSU (MISTRAL FREE) ---
+# --- V7.1 FINAL: OPENROUTER DONUSU (ISIM DUZELTME) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -8,12 +8,12 @@ import os
 app = Flask(__name__)
 
 # --- API AYARLARI (OPENROUTER) ---
-# Render'daki 'OPENAI_API_KEY' isimli kutudan senin OPENROUTER şifreni okur.
-api_key = os.environ.get("OPENAI_API_KEY")
+# DİKKAT: Render'da adını 'OPENROUTER_API_KEY' yaptığın için burayı değiştirdim.
+api_key = os.environ.get("OPENROUTER_API_KEY")
 
 client = OpenAI(
     api_key=api_key,
-    base_url="https://openrouter.ai/api/v1"  # <--- ADRES BURAYA SABITLENDI
+    base_url="https://openrouter.ai/api/v1"
 )
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -65,7 +65,7 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
         print(f"Otomatik AI Özeti Hatası: {e}")
         return "Otomatik analiz özeti alınamadı."
 
-# --- CSV INDIRME ROUTE ---
+# --- ROUTE'LAR ---
 @app.route('/download_csv/<sembol>')
 def download_csv(sembol):
     try:
@@ -79,7 +79,6 @@ def download_csv(sembol):
         return response
     except Exception as e: return "Hata oluştu.", 400
 
-# --- PIYASA OZETI ROUTE ---
 @app.route('/market_summary', methods=['GET'])
 def market_summary():
     tickers = ['XU100.IS', 'AKBNK.IS', 'ARCLK.IS', 'ASELS.IS', 'BIMAS.IS', 'EKGYO.IS', 'EREGL.IS', 'FROTO.IS', 'GARAN.IS', 'GOLTS.IS', 'HEKTS.IS', 'ISCTR.IS', 'KCHOL.IS', 'KOZAL.IS', 'KRDMD.IS', 'MGROS.IS', 'ODAS.IS', 'PETKM.IS', 'PGSUS.IS', 'SAHOL.IS', 'SASA.IS', 'SISE.IS', 'TAVHL.IS', 'TCELL.IS', 'THYAO.IS', 'TOASO.IS', 'TUPRS.IS', 'YKBNK.IS', 'HALKB.IS', 'VAKBN.IS']
@@ -97,7 +96,6 @@ def market_summary():
         return jsonify(summary_data)
     except: return jsonify([{'symbol': 'HATA', 'price': '-', 'change': '-', 'color': 'red'}])
 
-# --- TOP LISTELER YARDIMCI FONKSIYON ---
 def get_top_list_data(reverse_sort=True, sort_by='change'):
     bist100_tickers = ['AKBNK.IS', 'ARCLK.IS', 'ASELS.IS', 'BIMAS.IS', 'EKGYO.IS', 'EREGL.IS', 'FROTO.IS', 'GARAN.IS', 'GOLTS.IS', 'HEKTS.IS', 'ISCTR.IS', 'KCHOL.IS', 'KOZAL.IS', 'KRDMD.IS', 'MGROS.IS', 'ODAS.IS', 'PETKM.IS', 'PGSUS.IS', 'SAHOL.IS', 'SASA.IS', 'SISE.IS', 'TAVHL.IS', 'TCELL.IS', 'THYAO.IS', 'TOASO.IS', 'TUPRS.IS', 'YKBNK.IS', 'HALKB.IS', 'VAKBN.IS', 'CCOLA.IS', 'DOHOL.IS']
     final_list = []
@@ -128,7 +126,6 @@ def top_losers(): return render_template('losers.html', losers=get_top_list_data
 @app.route('/top_volume')
 def top_volume(): return render_template('volume.html', volumes=get_top_list_data(reverse_sort=True, sort_by='volume'))
 
-# --- ANA SAYFA ROUTE ---
 @app.route('/', methods=['GET', 'POST'])
 def home():
     sonuc, chart_data, ai_summary = None, None, None
@@ -161,7 +158,6 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (MISTRAL FREE) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
@@ -175,7 +171,7 @@ def chat():
         return jsonify({'reply': completion.choices[0].message.content})
     except Exception as e:
         error_msg = str(e)
-        if "401" in error_msg: return jsonify({'reply': "⚠️ HATA: Render'daki şifre OpenRouter şifresi olmalı! Ayarları kontrol et."})
+        if "401" in error_msg: return jsonify({'reply': "⚠️ HATA: Render'da 'OPENROUTER_API_KEY' bulunamadı veya hatalı!"})
         return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
 
 if __name__ == '__main__':
