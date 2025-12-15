@@ -1,4 +1,4 @@
-# --- V10.0 FINAL: SADE VE OZ (MISTRAL TEK TABANCA) ---
+# --- V10.1 FINAL: SADE VE OZ (LLAMA 3 DENEMESI) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -8,7 +8,6 @@ import os
 app = Flask(__name__)
 
 # --- API AYARLARI ---
-# Hem OPENROUTER hem OPENAI ismini kontrol eder
 api_key = os.environ.get("OPENROUTER_API_KEY")
 if not api_key:
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -51,8 +50,8 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     """
     try:
         completion = client.chat.completions.create(
-            # MODEL: Mistral (Sade ve guvenilir)
-            model="mistralai/mistral-7b-instruct:free", 
+            # MODEL DEGISTI: Llama 3 (Meta'nin modeli)
+            model="meta-llama/llama-3-8b-instruct:free", 
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
                 {"role": "user", "content": prompt}
@@ -67,7 +66,7 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
         print(f"AI Hatasi: {e}")
         return "Otomatik analiz özeti alınamadı."
 
-# --- ROUTE'LAR ---
+# --- ROUTE'LAR (Ayni) ---
 @app.route('/download_csv/<sembol>')
 def download_csv(sembol):
     try:
@@ -160,22 +159,21 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (SADE MISTRAL) ---
+# --- CHATBOT ROUTE (SADE LLAMA 3) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     try:
         completion = client.chat.completions.create(
-            # MODEL: Sadece Mistral kullaniyoruz, dongu yok.
-            model="mistralai/mistral-7b-instruct:free",
+            # MODEL: Llama 3
+            model="meta-llama/llama-3-8b-instruct:free",
             messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": data.get('message')}],
             extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
         )
         return jsonify({'reply': completion.choices[0].message.content})
     except Exception as e:
         error_msg = str(e)
-        if "429" in error_msg: return jsonify({'reply': "⚠️ Model çok yoğun. 1 dk sonra tekrar dene."})
-        if "401" in error_msg: return jsonify({'reply': "⚠️ Şifre hatası."})
+        if "429" in error_msg: return jsonify({'reply': "⚠️ Llama modeli de çok yoğun. Biraz bekleyip tekrar dene."})
         return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
 
 if __name__ == '__main__':
