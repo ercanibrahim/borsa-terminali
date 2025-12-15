@@ -1,10 +1,10 @@
-# --- V9.1 FINAL: AKILLI BEKLEME SISTEMI (ANTI-SPAM) ---
+# --- V10.2 FINAL: SADE VE TEMIZ (LOT SAYISI YOK) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
 from openai import OpenAI
 import os
-import time # <--- YENI: Zaman ayari icin eklendi
+import time
 
 app = Flask(__name__)
 
@@ -24,7 +24,7 @@ MODELS_TO_TRY = [
     "mistralai/mistral-7b-instruct:free",    
     "meta-llama/llama-3-8b-instruct:free",   
     "microsoft/phi-3-mini-128k-instruct:free",
-    "openchat/openchat-7:free" # Yedek 5. model
+    "openchat/openchat-7:free"
 ]
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -71,7 +71,7 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
             )
             return completion.choices[0].message.content
         except:
-            time.sleep(1) # Hata alirsa 1 saniye bekle oyle digerine gec
+            time.sleep(1)
             continue
             
     return "Otomatik analiz özeti şu an alınamıyor."
@@ -143,7 +143,7 @@ def home():
     if request.method == 'POST' and 'sembol' in request.form:
         try:
             sembol = request.form.get('sembol').upper()
-            lot_sayisi = int(request.form.get('adet', 1))
+            # Lot sayisi kaldirildi
             arama_kodu = sembol if ".IS" in sembol else sembol + ".IS"
             hisse = yf.Ticker(arama_kodu)
             df = hisse.history(period="6mo")
@@ -163,7 +163,20 @@ def home():
             sinyal_yorum = ["SAT 🔴", "SAT 🔴", "NÖTR 🟠", "AL 🟡", "GÜÇLÜ AL 🟢"][puan]
             ai_summary = get_ai_summary(sembol, puan, guncel_rsi, safe_format_ratio(fk_val), safe_format_ratio(pddd_val))
             chart_data_list = [{'x': index.value // 10**6, 'y': [row['Open'], row['High'], row['Low'], row['Close']]} for index, row in df.iterrows()]
-            sonuc = {'isim': sembol, 'fiyat': f"{guncel_fiyat:.2f}", 'toplam_tutar': f"{guncel_fiyat * lot_sayisi:,.2f}", 'fk': safe_format_ratio(fk_val), 'pddd': safe_format_ratio(pddd_val), 'rsi': f"{guncel_rsi:.2f}", 'puan': puan, 'sinyal_yorum': sinyal_yorum, 'sinyal_rsi_renk': 'green' if guncel_rsi < 30 else 'red', 'macd_line': f"{macd_data['MACD_Line'].iloc[-1]:.2f}", 'signal_line': f"{macd_data['Signal_Line'].iloc[-1]:.2f}", 'sinyal_macd_renk': 'green' if macd_data['MACD_Line'].iloc[-1] > macd_data['Signal_Line'].iloc[-1] else 'red'}
+            sonuc = {
+                'isim': sembol, 
+                'fiyat': f"{guncel_fiyat:.2f}", 
+                # Toplam Tutar kaldirildi
+                'fk': safe_format_ratio(fk_val), 
+                'pddd': safe_format_ratio(pddd_val), 
+                'rsi': f"{guncel_rsi:.2f}", 
+                'puan': puan, 
+                'sinyal_yorum': sinyal_yorum, 
+                'sinyal_rsi_renk': 'green' if guncel_rsi < 30 else 'red', 
+                'macd_line': f"{macd_data['MACD_Line'].iloc[-1]:.2f}", 
+                'signal_line': f"{macd_data['Signal_Line'].iloc[-1]:.2f}", 
+                'sinyal_macd_renk': 'green' if macd_data['MACD_Line'].iloc[-1] > macd_data['Signal_Line'].iloc[-1] else 'red'
+            }
         except Exception: 
             sonuc = {'hata': "Veri çekilemedi."}
             ai_summary = "Hata."
@@ -175,7 +188,6 @@ def chat():
     data = request.get_json()
     user_message = data.get('message')
     
-    # Sırayla dene ama acele etme
     for model_name in MODELS_TO_TRY:
         try:
             print(f"Denenen Model: {model_name}") 
@@ -193,8 +205,6 @@ def chat():
             if "401" in error_msg:
                  return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
             
-            # BURASI ONEMLI: Hata aldiktan sonra 1 saniye bekle
-            # Boylece sunucuya "spam" yapiyor gibi gozukmeyiz.
             time.sleep(1)
             continue
 
