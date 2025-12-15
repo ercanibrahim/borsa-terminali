@@ -1,4 +1,4 @@
-# --- V12.0 FINAL: NATIVE GOOGLE GEMINI (EN GARANTI YONTEM) ---
+# --- V12.1 FINAL: GEMINI PRO (TAS GIBI SAGLAM) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -9,7 +9,6 @@ import time
 app = Flask(__name__)
 
 # --- GOOGLE GEMINI AYARLARI ---
-# Render'daki 'GEMINI_API_KEY' buraya gelir
 api_key = os.environ.get("GEMINI_API_KEY")
 
 if api_key:
@@ -49,8 +48,8 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
     try:
-        # GOOGLE NATIVE KULLANIMI
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # MODEL: gemini-pro (En klasik ve saglam olani)
+        model = genai.GenerativeModel('gemini-pro')
         response = model.generate_content(f"Sen borsa uzmanısın. {prompt}")
         return response.text
     except Exception as e:
@@ -161,13 +160,13 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (NATIVE GEMINI) ---
+# --- CHATBOT ROUTE (NATIVE GEMINI PRO) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     try:
-        # GOOGLE NATIVE KULLANIMI
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # MODEL: gemini-pro
+        model = genai.GenerativeModel('gemini-pro')
         response = model.generate_content(f"Sen borsa asistanısın. Türkçe konuş. {data.get('message')}")
         return jsonify({'reply': response.text})
     except Exception as e:
