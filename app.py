@@ -1,9 +1,10 @@
-# --- V9.0 FINAL: AKILLI YEDEKLEME SISTEMI (ASLA PES ETMEZ) ---
+# --- V9.1 FINAL: AKILLI BEKLEME SISTEMI (ANTI-SPAM) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
 from openai import OpenAI
 import os
+import time # <--- YENI: Zaman ayari icin eklendi
 
 app = Flask(__name__)
 
@@ -17,13 +18,13 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1"
 )
 
-# --- DENENECEK MODELLER LISTESI (SIRAYLA) ---
-# Biri calismazsa digerine gecer.
+# --- DENENECEK MODELLER LISTESI ---
 MODELS_TO_TRY = [
-    "google/gemini-2.0-flash-exp:free",      # 1. Tercih: Google Gemini (Hızlı)
-    "mistralai/mistral-7b-instruct:free",    # 2. Tercih: Mistral (Dengeli)
-    "meta-llama/llama-3-8b-instruct:free",   # 3. Tercih: Llama 3 (Zeki)
-    "microsoft/phi-3-mini-128k-instruct:free" # 4. Tercih: Microsoft (Hafif)
+    "google/gemini-2.0-flash-exp:free",      
+    "mistralai/mistral-7b-instruct:free",    
+    "meta-llama/llama-3-8b-instruct:free",   
+    "microsoft/phi-3-mini-128k-instruct:free",
+    "openchat/openchat-7:free" # Yedek 5. model
 ]
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -58,7 +59,6 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
     
-    # AI Özeti için de yedekli sistem
     for model in MODELS_TO_TRY:
         try:
             completion = client.chat.completions.create(
@@ -71,9 +71,10 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
             )
             return completion.choices[0].message.content
         except:
-            continue # Hata verirse sessizce diğer modele geç
+            time.sleep(1) # Hata alirsa 1 saniye bekle oyle digerine gec
+            continue
             
-    return "Otomatik analiz özeti şu an alınamıyor (Tüm servisler yoğun)."
+    return "Otomatik analiz özeti şu an alınamıyor."
 
 # --- ROUTE'LAR ---
 @app.route('/download_csv/<sembol>')
@@ -168,36 +169,35 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (AKILLI YEDEKLEME) ---
+# --- CHATBOT ROUTE (AKILLI VE SAKIN) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     user_message = data.get('message')
     
-    # Sırayla tüm modelleri deneyeceğiz
+    # Sırayla dene ama acele etme
     for model_name in MODELS_TO_TRY:
         try:
-            print(f"Denenen Model: {model_name}") # Loglara yazar
+            print(f"Denenen Model: {model_name}") 
             completion = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": user_message}],
                 extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
             )
-            # Eğer buraya geldiyse başarılı olmuştur, cevabı döndür ve döngüden çık
             return jsonify({'reply': completion.choices[0].message.content})
             
         except Exception as e:
             error_msg = str(e)
             print(f"HATA ({model_name}): {error_msg}")
             
-            # Eğer şifre hatasıysa döngüyü kır, çünkü şifre tüm modeller için aynı
             if "401" in error_msg:
                  return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
             
-            # Eğer "Rate Limit" (429) veya başka bir hataysa, bir sonraki modele geç
+            # BURASI ONEMLI: Hata aldiktan sonra 1 saniye bekle
+            # Boylece sunucuya "spam" yapiyor gibi gozukmeyiz.
+            time.sleep(1)
             continue
 
-    # Eğer döngü bitti ve hala cevap yoksa
     return jsonify({'reply': "⚠️ Şu an tüm AI modelleri aşırı yoğun. Lütfen 30 saniye sonra tekrar deneyin."})
 
 if __name__ == '__main__':
