@@ -1,16 +1,30 @@
-# --- V13.0 FINAL: MANUEL VITES (REST API - %100 GARANTI) ---
+# --- V14.0 FINAL: EFSANE GERI DONDU (OPENROUTER YEDEKLI SISTEM) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
-import requests # <--- Direkt baglanti icin
+from openai import OpenAI
 import os
-import json
+import time
 
 app = Flask(__name__)
 
-# --- GOOGLE GEMINI AYARLARI ---
-# Render'daki 'GEMINI_API_KEY' buraya gelir
-api_key = os.environ.get("GEMINI_API_KEY")
+# --- API AYARLARI ---
+# Render'daki 'OPENROUTER_API_KEY' anahtarini alir
+api_key = os.environ.get("OPENROUTER_API_KEY")
+
+client = OpenAI(
+    api_key=api_key,
+    base_url="https://openrouter.ai/api/v1"
+)
+
+# --- DENENECEK MODELLER LISTESI (HIZLIDAN YAVASA) ---
+MODELS_TO_TRY = [
+    "google/gemini-2.0-flash-exp:free",       # 1. En Hizli/Yeni
+    "google/gemini-2.0-flash-thinking-exp:free", # 2. Dusunen Model
+    "mistralai/mistral-7b-instruct:free",      # 3. Klasik
+    "meta-llama/llama-3-8b-instruct:free",     # 4. Alternatif
+    "microsoft/phi-3-mini-128k-instruct:free"  # 5. Yedek
+]
 
 # --- YARDIMCI FONKSİYONLAR ---
 def safe_format_ratio(value):
@@ -33,33 +47,6 @@ def macd_hesapla(veri, fast=12, slow=26, signal=9):
     veri['Signal_Line'] = veri['MACD_Line'].ewm(span=signal, adjust=False).mean()
     return veri
 
-# --- YENI AI FONKSIYONU (KUTUPHANESIZ - DIREKT HTTP ISTEGI) ---
-def ask_google_gemini(prompt):
-    if not api_key:
-        return "HATA: API Anahtari bulunamadi."
-    
-    # Google'in 1.5 Flash modeli icin ozel adresi
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
-    
-    headers = {'Content-Type': 'application/json'}
-    data = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
-    
-    try:
-        response = requests.post(url, headers=headers, json=data)
-        
-        # Eger cevap basariliysa (200 OK)
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            # Hata varsa detayini goster
-            return f"AI Hatası ({response.status_code}): {response.text}"
-    except Exception as e:
-        return f"Baglanti Hatasi: {str(e)}"
-
 def get_ai_summary(sembol, puan, rsi, fk, pddd):
     prompt = f"""
     Sen uzman bir Borsa ve Temel/Teknik analistsin. Sadece Türkçe, kesin, mantıklı ve tek bir paragraf halinde, 60 kelimeyi geçmeyecek şekilde şu analiz sonuçlarını yorumla:
@@ -70,9 +57,23 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     P/DD Oranı: {pddd}
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
-    # Yeni fonksiyonu kullaniyoruz
-    ai_response = ask_google_gemini(f"Sen borsa uzmanısın. {prompt}")
-    return ai_response
+    
+    for model in MODELS_TO_TRY:
+        try:
+            completion = client.chat.completions.create(
+                model=model, 
+                messages=[
+                    {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
+                    {"role": "user", "content": prompt}
+                ],
+                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
+            )
+            return completion.choices[0].message.content
+        except:
+            time.sleep(1) # Hata alirsa 1 saniye bekle
+            continue
+            
+    return "Otomatik analiz özeti şu an alınamıyor (Sunucular yoğun)."
 
 # --- ROUTE'LAR ---
 @app.route('/download_csv/<sembol>')
@@ -178,16 +179,32 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (DIRECT REST API) ---
+# --- CHATBOT ROUTE (YEDEKLI SISTEM) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     user_message = data.get('message')
     
-    # Yeni manuel fonksiyonu cagiriyoruz
-    ai_reply = ask_google_gemini(f"Sen borsa asistanısın. Türkçe konuş. {user_message}")
-    
-    return jsonify({'reply': ai_reply})
+    for model_name in MODELS_TO_TRY:
+        try:
+            print(f"Denenen Model: {model_name}") 
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": user_message}],
+                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
+            )
+            return jsonify({'reply': completion.choices[0].message.content})
+        except Exception as e:
+            error_msg = str(e)
+            print(f"HATA ({model_name}): {error_msg}")
+            
+            if "401" in error_msg:
+                 return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
+            
+            time.sleep(1) # Spam olmamasi icin bekle
+            continue
+
+    return jsonify({'reply': "⚠️ Şu an tüm AI modelleri aşırı yoğun. Lütfen 30 saniye sonra tekrar deneyin."})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')

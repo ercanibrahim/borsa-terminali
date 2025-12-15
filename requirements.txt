@@ -1,5 +1,5 @@
 Flask
 yfinance
 pandas
-requests
+openai
 gunicorn
