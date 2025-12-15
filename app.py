@@ -1,22 +1,21 @@
-# --- V11.0 FINAL: GOOGLE GEMINI OZEL SURUM (HIZ VE KALITE) ---
+# --- V12.0 FINAL: NATIVE GOOGLE GEMINI (EN GARANTI YONTEM) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
-from openai import OpenAI
+import google.generativeai as genai
 import os
 import time
 
 app = Flask(__name__)
 
-# --- API AYARLARI (GOOGLE GEMINI) ---
-# Render'da 'GEMINI_API_KEY' isminde kaydettigin sifreyi alir
+# --- GOOGLE GEMINI AYARLARI ---
+# Render'daki 'GEMINI_API_KEY' buraya gelir
 api_key = os.environ.get("GEMINI_API_KEY")
 
-# Google'in ozel adresine baglaniyoruz (OpenRouter degil!)
-client = OpenAI(
-    api_key=api_key,
-    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-)
+if api_key:
+    genai.configure(api_key=api_key)
+else:
+    print("UYARI: GEMINI_API_KEY bulunamadi!")
 
 # --- YARDIMCI FONKSİYONLAR ---
 def safe_format_ratio(value):
@@ -50,15 +49,10 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
     try:
-        completion = client.chat.completions.create(
-            # MODEL: Google'in en hizli ve zeki modeli (Flash)
-            model="gemini-1.5-flash", 
-            messages=[
-                {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return completion.choices[0].message.content
+        # GOOGLE NATIVE KULLANIMI
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(f"Sen borsa uzmanısın. {prompt}")
+        return response.text
     except Exception as e:
         print(f"AI Hatasi: {e}")
         return "Otomatik analiz özeti alınamadı."
@@ -167,21 +161,19 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (GOOGLE GEMINI) ---
+# --- CHATBOT ROUTE (NATIVE GEMINI) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     try:
-        completion = client.chat.completions.create(
-            # MODEL: Gemini 1.5 Flash (Cok hizli)
-            model="gemini-1.5-flash",
-            messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": data.get('message')}]
-        )
-        return jsonify({'reply': completion.choices[0].message.content})
+        # GOOGLE NATIVE KULLANIMI
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        response = model.generate_content(f"Sen borsa asistanısın. Türkçe konuş. {data.get('message')}")
+        return jsonify({'reply': response.text})
     except Exception as e:
         error_msg = str(e)
-        if "401" in error_msg: return jsonify({'reply': "⚠️ HATA: Render'da 'GEMINI_API_KEY' bulunamadi veya yanlis!"})
-        if "429" in error_msg: return jsonify({'reply': "⚠️ Hız sınırı (Dakikada 15 soru). Biraz bekleyin."})
+        if "401" in error_msg or "API_KEY" in error_msg: 
+             return jsonify({'reply': "⚠️ HATA: Render'da 'GEMINI_API_KEY' bulunamadı!"})
         return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
 
 if __name__ == '__main__':
