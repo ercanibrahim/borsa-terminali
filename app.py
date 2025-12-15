@@ -1,4 +1,4 @@
-# --- V8.0 FINAL: GEMINI MODELINE GECIS (DAHA HIZLI) ---
+# --- V9.0 FINAL: AKILLI YEDEKLEME SISTEMI (ASLA PES ETMEZ) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -7,7 +7,7 @@ import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI (AKILLI KONTROL) ---
+# --- API AYARLARI ---
 api_key = os.environ.get("OPENROUTER_API_KEY")
 if not api_key:
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -16,6 +16,15 @@ client = OpenAI(
     api_key=api_key,
     base_url="https://openrouter.ai/api/v1"
 )
+
+# --- DENENECEK MODELLER LISTESI (SIRAYLA) ---
+# Biri calismazsa digerine gecer.
+MODELS_TO_TRY = [
+    "google/gemini-2.0-flash-exp:free",      # 1. Tercih: Google Gemini (Hızlı)
+    "mistralai/mistral-7b-instruct:free",    # 2. Tercih: Mistral (Dengeli)
+    "meta-llama/llama-3-8b-instruct:free",   # 3. Tercih: Llama 3 (Zeki)
+    "microsoft/phi-3-mini-128k-instruct:free" # 4. Tercih: Microsoft (Hafif)
+]
 
 # --- YARDIMCI FONKSİYONLAR ---
 def safe_format_ratio(value):
@@ -48,25 +57,25 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     P/DD Oranı: {pddd}
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
-    try:
-        completion = client.chat.completions.create(
-            # MODEL DEGISTI: Gemini (Daha hizli ve bedava)
-            model="google/gemini-2.0-flash-exp:free", 
-            messages=[
-                {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
-                {"role": "user", "content": prompt}
-            ],
-            extra_headers={
-                "HTTP-Referer": "https://borsacin.com",
-                "X-Title": "Borsa Terminali"
-            }
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        print(f"Otomatik AI Özeti Hatası: {e}")
-        return "Otomatik analiz özeti alınamadı."
+    
+    # AI Özeti için de yedekli sistem
+    for model in MODELS_TO_TRY:
+        try:
+            completion = client.chat.completions.create(
+                model=model, 
+                messages=[
+                    {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
+                    {"role": "user", "content": prompt}
+                ],
+                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
+            )
+            return completion.choices[0].message.content
+        except:
+            continue # Hata verirse sessizce diğer modele geç
+            
+    return "Otomatik analiz özeti şu an alınamıyor (Tüm servisler yoğun)."
 
-# --- ROUTE'LAR (Ayni) ---
+# --- ROUTE'LAR ---
 @app.route('/download_csv/<sembol>')
 def download_csv(sembol):
     try:
@@ -159,22 +168,37 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
+# --- CHATBOT ROUTE (AKILLI YEDEKLEME) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
-    try:
-        completion = client.chat.completions.create(
-            # MODEL: Gemini Flash (Cok hizli)
-            model="google/gemini-2.0-flash-exp:free",
-            messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": data.get('message')}],
-            extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
-        )
-        return jsonify({'reply': completion.choices[0].message.content})
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg: return jsonify({'reply': "⚠️ HATA: Model şu an çok yoğun. Lütfen 1 dakika sonra tekrar dene."})
-        if "401" in error_msg: return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ!"})
-        return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
+    user_message = data.get('message')
+    
+    # Sırayla tüm modelleri deneyeceğiz
+    for model_name in MODELS_TO_TRY:
+        try:
+            print(f"Denenen Model: {model_name}") # Loglara yazar
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": user_message}],
+                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
+            )
+            # Eğer buraya geldiyse başarılı olmuştur, cevabı döndür ve döngüden çık
+            return jsonify({'reply': completion.choices[0].message.content})
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"HATA ({model_name}): {error_msg}")
+            
+            # Eğer şifre hatasıysa döngüyü kır, çünkü şifre tüm modeller için aynı
+            if "401" in error_msg:
+                 return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
+            
+            # Eğer "Rate Limit" (429) veya başka bir hataysa, bir sonraki modele geç
+            continue
+
+    # Eğer döngü bitti ve hala cevap yoksa
+    return jsonify({'reply': "⚠️ Şu an tüm AI modelleri aşırı yoğun. Lütfen 30 saniye sonra tekrar deneyin."})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
