@@ -1,4 +1,4 @@
-# --- V10.2 FINAL: SADE VE TEMIZ (LOT SAYISI YOK) ---
+# --- V11.0 FINAL: GOOGLE GEMINI OZEL SURUM (HIZ VE KALITE) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -8,24 +8,15 @@ import time
 
 app = Flask(__name__)
 
-# --- API AYARLARI ---
-api_key = os.environ.get("OPENROUTER_API_KEY")
-if not api_key:
-    api_key = os.environ.get("OPENAI_API_KEY")
+# --- API AYARLARI (GOOGLE GEMINI) ---
+# Render'da 'GEMINI_API_KEY' isminde kaydettigin sifreyi alir
+api_key = os.environ.get("GEMINI_API_KEY")
 
+# Google'in ozel adresine baglaniyoruz (OpenRouter degil!)
 client = OpenAI(
     api_key=api_key,
-    base_url="https://openrouter.ai/api/v1"
+    base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
-
-# --- DENENECEK MODELLER LISTESI ---
-MODELS_TO_TRY = [
-    "google/gemini-2.0-flash-exp:free",      
-    "mistralai/mistral-7b-instruct:free",    
-    "meta-llama/llama-3-8b-instruct:free",   
-    "microsoft/phi-3-mini-128k-instruct:free",
-    "openchat/openchat-7:free"
-]
 
 # --- YARDIMCI FONKSİYONLAR ---
 def safe_format_ratio(value):
@@ -58,23 +49,19 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     P/DD Oranı: {pddd}
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
-    
-    for model in MODELS_TO_TRY:
-        try:
-            completion = client.chat.completions.create(
-                model=model, 
-                messages=[
-                    {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
-                    {"role": "user", "content": prompt}
-                ],
-                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
-            )
-            return completion.choices[0].message.content
-        except:
-            time.sleep(1)
-            continue
-            
-    return "Otomatik analiz özeti şu an alınamıyor."
+    try:
+        completion = client.chat.completions.create(
+            # MODEL: Google'in en hizli ve zeki modeli (Flash)
+            model="gemini-1.5-flash", 
+            messages=[
+                {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        print(f"AI Hatasi: {e}")
+        return "Otomatik analiz özeti alınamadı."
 
 # --- ROUTE'LAR ---
 @app.route('/download_csv/<sembol>')
@@ -100,7 +87,7 @@ def market_summary():
             if ticker_code in data['Close']:
                 close_data = data['Close'][ticker_code].dropna()
                 if len(close_data) >= 2: latest_close, prev_close = close_data.iloc[-1], close_data.iloc[0]
-                else: latest_close = prev_close = close_data.iloc[-1] if not close_data.empty else 0
+                else: latest_close, prev_close = close_data.iloc[-1] if not close_data.empty else 0
                 change_percent = ((latest_close - prev_close) / prev_close) * 100 if prev_close != 0 else 0
                 symbol_display = ticker_code.replace('.IS', '').replace('XU100', 'BIST100')
                 summary_data.append({'symbol': symbol_display, 'price': f"{latest_close:,.2f}", 'change': f"{change_percent:+.2f}%", 'color': 'green' if change_percent > 0 else ('red' if change_percent < 0 else 'gray')})
@@ -143,7 +130,6 @@ def home():
     if request.method == 'POST' and 'sembol' in request.form:
         try:
             sembol = request.form.get('sembol').upper()
-            # Lot sayisi kaldirildi
             arama_kodu = sembol if ".IS" in sembol else sembol + ".IS"
             hisse = yf.Ticker(arama_kodu)
             df = hisse.history(period="6mo")
@@ -166,7 +152,6 @@ def home():
             sonuc = {
                 'isim': sembol, 
                 'fiyat': f"{guncel_fiyat:.2f}", 
-                # Toplam Tutar kaldirildi
                 'fk': safe_format_ratio(fk_val), 
                 'pddd': safe_format_ratio(pddd_val), 
                 'rsi': f"{guncel_rsi:.2f}", 
@@ -182,33 +167,22 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (AKILLI VE SAKIN) ---
+# --- CHATBOT ROUTE (GOOGLE GEMINI) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
-    user_message = data.get('message')
-    
-    for model_name in MODELS_TO_TRY:
-        try:
-            print(f"Denenen Model: {model_name}") 
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": user_message}],
-                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
-            )
-            return jsonify({'reply': completion.choices[0].message.content})
-            
-        except Exception as e:
-            error_msg = str(e)
-            print(f"HATA ({model_name}): {error_msg}")
-            
-            if "401" in error_msg:
-                 return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
-            
-            time.sleep(1)
-            continue
-
-    return jsonify({'reply': "⚠️ Şu an tüm AI modelleri aşırı yoğun. Lütfen 30 saniye sonra tekrar deneyin."})
+    try:
+        completion = client.chat.completions.create(
+            # MODEL: Gemini 1.5 Flash (Cok hizli)
+            model="gemini-1.5-flash",
+            messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": data.get('message')}]
+        )
+        return jsonify({'reply': completion.choices[0].message.content})
+    except Exception as e:
+        error_msg = str(e)
+        if "401" in error_msg: return jsonify({'reply': "⚠️ HATA: Render'da 'GEMINI_API_KEY' bulunamadi veya yanlis!"})
+        if "429" in error_msg: return jsonify({'reply': "⚠️ Hız sınırı (Dakikada 15 soru). Biraz bekleyin."})
+        return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
