@@ -1,4 +1,4 @@
-# --- V7.2 FINAL: AKILLI ANAHTAR BULUCU ---
+# --- V8.0 FINAL: GEMINI MODELINE GECIS (DAHA HIZLI) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -8,15 +8,9 @@ import os
 app = Flask(__name__)
 
 # --- API AYARLARI (AKILLI KONTROL) ---
-# Kanka burasi artik hem OPENROUTER hem OPENAI ismine bakar.
-# Hangisini bulursa onu kullanir.
 api_key = os.environ.get("OPENROUTER_API_KEY")
 if not api_key:
     api_key = os.environ.get("OPENAI_API_KEY")
-
-# Eger hicbirini bulamazsa bos string verir (Hata vermez ama chat calismaz)
-if not api_key:
-    print("UYARI: Hicbir API anahtari bulunamadi!")
 
 client = OpenAI(
     api_key=api_key,
@@ -56,7 +50,8 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     """
     try:
         completion = client.chat.completions.create(
-            model="mistralai/mistral-7b-instruct:free", 
+            # MODEL DEGISTI: Gemini (Daha hizli ve bedava)
+            model="google/gemini-2.0-flash-exp:free", 
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
                 {"role": "user", "content": prompt}
@@ -71,7 +66,7 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
         print(f"Otomatik AI Özeti Hatası: {e}")
         return "Otomatik analiz özeti alınamadı."
 
-# --- ROUTE'LAR ---
+# --- ROUTE'LAR (Ayni) ---
 @app.route('/download_csv/<sembol>')
 def download_csv(sembol):
     try:
@@ -169,16 +164,16 @@ def chat():
     data = request.get_json()
     try:
         completion = client.chat.completions.create(
-            # MODEL: Bedava olan Mistral (OpenRouter)
-            model="mistralai/mistral-7b-instruct:free",
+            # MODEL: Gemini Flash (Cok hizli)
+            model="google/gemini-2.0-flash-exp:free",
             messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": data.get('message')}],
             extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
         )
         return jsonify({'reply': completion.choices[0].message.content})
     except Exception as e:
         error_msg = str(e)
-        if "401" in error_msg: 
-             return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Lütfen OpenRouter sitesinden yeni şifre alıp Render'a yapıştır."})
+        if "429" in error_msg: return jsonify({'reply': "⚠️ HATA: Model şu an çok yoğun. Lütfen 1 dakika sonra tekrar dene."})
+        if "401" in error_msg: return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ!"})
         return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
 
 if __name__ == '__main__':
