@@ -1,9 +1,10 @@
-# --- V10.1 FINAL: SADE VE OZ (LLAMA 3 DENEMESI) ---
+# --- V9.1 FINAL: AKILLI BEKLEME SISTEMI (ANTI-SPAM) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
 from openai import OpenAI
 import os
+import time # <--- YENI: Zaman ayari icin eklendi
 
 app = Flask(__name__)
 
@@ -16,6 +17,15 @@ client = OpenAI(
     api_key=api_key,
     base_url="https://openrouter.ai/api/v1"
 )
+
+# --- DENENECEK MODELLER LISTESI ---
+MODELS_TO_TRY = [
+    "google/gemini-2.0-flash-exp:free",      
+    "mistralai/mistral-7b-instruct:free",    
+    "meta-llama/llama-3-8b-instruct:free",   
+    "microsoft/phi-3-mini-128k-instruct:free",
+    "openchat/openchat-7:free" # Yedek 5. model
+]
 
 # --- YARDIMCI FONKSİYONLAR ---
 def safe_format_ratio(value):
@@ -48,25 +58,25 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     P/DD Oranı: {pddd}
     Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
     """
-    try:
-        completion = client.chat.completions.create(
-            # MODEL DEGISTI: Llama 3 (Meta'nin modeli)
-            model="meta-llama/llama-3-8b-instruct:free", 
-            messages=[
-                {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
-                {"role": "user", "content": prompt}
-            ],
-            extra_headers={
-                "HTTP-Referer": "https://borsacin.com",
-                "X-Title": "Borsa Terminali"
-            }
-        )
-        return completion.choices[0].message.content
-    except Exception as e:
-        print(f"AI Hatasi: {e}")
-        return "Otomatik analiz özeti alınamadı."
+    
+    for model in MODELS_TO_TRY:
+        try:
+            completion = client.chat.completions.create(
+                model=model, 
+                messages=[
+                    {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
+                    {"role": "user", "content": prompt}
+                ],
+                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
+            )
+            return completion.choices[0].message.content
+        except:
+            time.sleep(1) # Hata alirsa 1 saniye bekle oyle digerine gec
+            continue
+            
+    return "Otomatik analiz özeti şu an alınamıyor."
 
-# --- ROUTE'LAR (Ayni) ---
+# --- ROUTE'LAR ---
 @app.route('/download_csv/<sembol>')
 def download_csv(sembol):
     try:
@@ -159,22 +169,36 @@ def home():
             ai_summary = "Hata."
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (SADE LLAMA 3) ---
+# --- CHATBOT ROUTE (AKILLI VE SAKIN) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
-    try:
-        completion = client.chat.completions.create(
-            # MODEL: Llama 3
-            model="meta-llama/llama-3-8b-instruct:free",
-            messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": data.get('message')}],
-            extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
-        )
-        return jsonify({'reply': completion.choices[0].message.content})
-    except Exception as e:
-        error_msg = str(e)
-        if "429" in error_msg: return jsonify({'reply': "⚠️ Llama modeli de çok yoğun. Biraz bekleyip tekrar dene."})
-        return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
+    user_message = data.get('message')
+    
+    # Sırayla dene ama acele etme
+    for model_name in MODELS_TO_TRY:
+        try:
+            print(f"Denenen Model: {model_name}") 
+            completion = client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": user_message}],
+                extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
+            )
+            return jsonify({'reply': completion.choices[0].message.content})
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"HATA ({model_name}): {error_msg}")
+            
+            if "401" in error_msg:
+                 return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
+            
+            # BURASI ONEMLI: Hata aldiktan sonra 1 saniye bekle
+            # Boylece sunucuya "spam" yapiyor gibi gozukmeyiz.
+            time.sleep(1)
+            continue
+
+    return jsonify({'reply': "⚠️ Şu an tüm AI modelleri aşırı yoğun. Lütfen 30 saniye sonra tekrar deneyin."})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
