@@ -1,3 +1,4 @@
+# --- V5.0 FINAL SÜRÜM: KESİN ÇÖZÜM ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -6,13 +7,16 @@ import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI (ZORUNLU OPENAI ADRESI) ---
-# Kanka buraya dikkat: base_url'i elle yazdim ki baska yere gidemesin.
+# --- API AYARLARI (ZORUNLU OPENAI ADRESİ) ---
+# Burada sadece OpenAI anahtarını alıyoruz.
 api_key = os.environ.get("OPENAI_API_KEY")
 
+# İŞTE ÇÖZÜM BURASI:
+# base_url'i elle 'https://api.openai.com/v1' olarak girdik.
+# Artık kod istese de OpenRouter'a gidemez.
 client = OpenAI(
     api_key=api_key,
-    base_url="https://api.openai.com/v1"  # <--- BAK BURAYA ADRESI CAKTIK!
+    base_url="https://api.openai.com/v1"
 )
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -54,7 +58,6 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     
     try:
         completion = client.chat.completions.create(
-            # MODEL: OpenAI gpt-4o-mini
             model="gpt-4o-mini", 
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe, **dilbilgisi ve yazım kurallarına %100 uygun** cevap ver."},
@@ -303,7 +306,7 @@ def chat():
     
     try:
         completion = client.chat.completions.create(
-            # DÜZELTİLDİ: OpenAI'da çalışan model
+            # MODEL: OpenAI gpt-4o-mini
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa asistanısın. Türkçe, **dilbilgisi ve yazım kurallarına %100 uygun** cevap ver."},
@@ -315,7 +318,12 @@ def chat():
         print(f"AI Chat Hatası: {e}")
         # Hata mesajını kullanıcıya daha tatlı gösterelim
         if "401" in str(e):
-             return jsonify({'reply': "⚠️ Hata: API Anahtarı doğrulanamadı. Lütfen Render ayarlarından OPENAI_API_KEY'in doğru girildiğinden emin olun."})
+             return jsonify({'reply': "⚠️ Hata: OPENAI_API_KEY hatalı veya bakiyesi yok. Lütfen OpenAI panelini kontrol et."})
+        
+        # Eğer para yoksa (Quota hatası)
+        if "insufficient_quota" in str(e):
+             return jsonify({'reply': "⚠️ Hata: OpenAI hesabında kredi (bakiye) yok. Minimum 5$ yükleme yapılması gerekiyor."})
+             
         return jsonify({'reply': f"Bağlantı hatası: {str(e)}"})
 
 if __name__ == '__main__':
