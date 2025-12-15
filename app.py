@@ -1,4 +1,4 @@
-# --- V7.1 FINAL: OPENROUTER DONUSU (ISIM DUZELTME) ---
+# --- V7.2 FINAL: AKILLI ANAHTAR BULUCU ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -7,9 +7,16 @@ import os
 
 app = Flask(__name__)
 
-# --- API AYARLARI (OPENROUTER) ---
-# DİKKAT: Render'da adını 'OPENROUTER_API_KEY' yaptığın için burayı değiştirdim.
+# --- API AYARLARI (AKILLI KONTROL) ---
+# Kanka burasi artik hem OPENROUTER hem OPENAI ismine bakar.
+# Hangisini bulursa onu kullanir.
 api_key = os.environ.get("OPENROUTER_API_KEY")
+if not api_key:
+    api_key = os.environ.get("OPENAI_API_KEY")
+
+# Eger hicbirini bulamazsa bos string verir (Hata vermez ama chat calismaz)
+if not api_key:
+    print("UYARI: Hicbir API anahtari bulunamadi!")
 
 client = OpenAI(
     api_key=api_key,
@@ -49,7 +56,6 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
     """
     try:
         completion = client.chat.completions.create(
-            # MODEL: Bedava Mistral
             model="mistralai/mistral-7b-instruct:free", 
             messages=[
                 {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
@@ -171,7 +177,8 @@ def chat():
         return jsonify({'reply': completion.choices[0].message.content})
     except Exception as e:
         error_msg = str(e)
-        if "401" in error_msg: return jsonify({'reply': "⚠️ HATA: Render'da 'OPENROUTER_API_KEY' bulunamadı veya hatalı!"})
+        if "401" in error_msg: 
+             return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Lütfen OpenRouter sitesinden yeni şifre alıp Render'a yapıştır."})
         return jsonify({'reply': f"Bağlantı hatası: {error_msg}"})
 
 if __name__ == '__main__':
