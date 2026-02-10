@@ -1,4 +1,4 @@
-# --- V14.1 FINAL: AKBNK OZEL & FAILOVER SISTEMI ---
+# --- V14.5 FINAL: EFSANE GERİ DÖNDÜ (AKBNK & GERÇEK FAILOVER) ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -9,7 +9,6 @@ import time
 app = Flask(__name__)
 
 # --- API AYARLARI ---
-# Render'daki 'OPENROUTER_API_KEY' anahtarini alir
 api_key = os.environ.get("OPENROUTER_API_KEY")
 
 client = OpenAI(
@@ -17,13 +16,14 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1"
 )
 
-# --- DENENECEK MODELLER LISTESI (Yedekleme Sirasi) ---
+# --- DENENECEK MODELLER (Sıralama Kararlılığa Göre Yapıldı) ---
 MODELS_TO_TRY = [
-    "google/gemini-2.0-flash-exp:free",      # 1. En Hizli
-    "google/gemini-2.0-flash-thinking-exp:free", # 2. Dusunen
-    "mistralai/mistral-7b-instruct:free",      # 3. Klasik
-    "meta-llama/llama-3-8b-instruct:free",     # 4. Alternatif
-    "microsoft/phi-3-mini-128k-instruct:free"  # 5. Yedek
+    "google/gemini-2.0-flash-exp:free",      # 1. En Hızlı [cite: 53]
+    "google/gemini-2.0-flash-thinking-exp:free", # 2. Düşünen Model [cite: 53]
+    "qwen/qwen-2.5-72b-instruct:free",       # 3. Çok Kararlı Yedek
+    "mistralai/mistral-7b-instruct:free",      # 4. Klasik Yedek [cite: 53]
+    "meta-llama/llama-3-8b-instruct:free",     # 5. Alternatif [cite: 35]
+    "microsoft/phi-3-mini-128k-instruct:free"  # 6. Son Çare
 ]
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -48,35 +48,33 @@ def macd_hesapla(veri, fast=12, slow=26, signal=9):
     return veri
 
 def get_ai_summary(sembol, puan, rsi, fk, pddd):
-    # Prompt AKBNK vurgusuyla guclendirildi
+    # AKBNK Odaklı ve Kesin Talimatlı Prompt [cite: 38, 66]
     prompt = f"""
-    Sen uzman bir Borsa ve Temel/Teknik analistsin. (Örnek hisse analizi stilimiz AKBNK gibidir).
-    Sadece Türkçe, kesin, mantıklı ve tek bir paragraf halinde, 60 kelimeyi geçmeyecek şekilde şu analiz sonuçlarını yorumla:
-    Hisse: {sembol}
-    Algoritmik Puan (4 Üzerinden): {puan}
-    RSI Değeri: {rsi:.2f}
-    F/K Oranı: {fk}
-    P/DD Oranı: {pddd}
-    Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt.
-    Eğer veriler ' - ' ise yorum yapma.
+    Sen uzman bir borsa analistisin. (AKBNK stilinde analiz yap).
+    Sadece Türkçe, kesin ve tek bir paragraf (max 60 kelime) olarak yorumla:
+    Hisse: {sembol}, Puan: {puan}/4, RSI: {rsi:.2f}, F/K: {fk}, P/DD: {pddd}.
+    F/K < 10 ve P/DD < 2 ise güçlü pozitif olduğunu belirt. Oranlar '-' ise yorum yapma. [cite: 66]
     """
     
     for model in MODELS_TO_TRY:
         try:
+            print(f"📡 {model} deneniyor...")
             completion = client.chat.completions.create(
                 model=model, 
                 messages=[
-                    {"role": "system", "content": "Sen uzman bir Borsa analisti ve asistanısın. Türkçe cevap ver."},
+                    {"role": "system", "content": "Sen profesyonel bir borsa asistanısın. Kısa ve öz cevap ver."},
                     {"role": "user", "content": prompt}
                 ],
+                timeout=15, # 15 saniye kuralı: Cevap yoksa diğer modele geç!
                 extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
             )
-            return completion.choices[0].message.content
-        except:
-            time.sleep(1) # Hata alirsa 1 saniye bekle ve diger modele gec
+            if completion.choices[0].message.content:
+                return completion.choices[0].message.content
+        except Exception as e:
+            print(f"⚠️ {model} hatası: {str(e)}")
+            time.sleep(1) # Hata toleransı beklemesi [cite: 35]
             continue
             
-    # Hicbir model cevap vermezse donecek metin:
     return "Otomatik analiz özeti şu an alınamıyor (Sunucular yoğun)."
 
 # --- ROUTE'LAR ---
@@ -91,55 +89,30 @@ def download_csv(sembol):
         response = send_file(csv_path, mimetype='text/csv', as_attachment=True, download_name=f'{sembol}_Analiz_Verisi.csv')
         os.remove(csv_path)
         return response
-    except Exception as e: return "Hata oluştu.", 400
+    except: return "Hata oluştu.", 400
 
 @app.route('/market_summary', methods=['GET'])
 def market_summary():
-    # AKBNK en basa alindi
-    tickers = ['XU100.IS', 'AKBNK.IS', 'GARAN.IS', 'THYAO.IS', 'ISCTR.IS', 'YKBNK.IS', 'ARCLK.IS', 'ASELS.IS', 'BIMAS.IS', 'EKGYO.IS', 'EREGL.IS', 'FROTO.IS', 'GOLTS.IS', 'HEKTS.IS', 'KCHOL.IS', 'KOZAL.IS', 'KRDMD.IS', 'MGROS.IS', 'ODAS.IS', 'PETKM.IS', 'PGSUS.IS', 'SAHOL.IS', 'SASA.IS', 'SISE.IS', 'TAVHL.IS', 'TCELL.IS', 'TOASO.IS', 'TUPRS.IS', 'HALKB.IS', 'VAKBN.IS']
+    # AKBNK en başta!
+    tickers = ['XU100.IS', 'AKBNK.IS', 'GARAN.IS', 'THYAO.IS', 'ISCTR.IS', 'YKBNK.IS', 'SISE.IS', 'EREGL.IS']
     summary_data = []
     try:
         data = yf.download(tickers, period="2d", interval="1h")
         for ticker_code in tickers:
             if ticker_code in data['Close']:
                 close_data = data['Close'][ticker_code].dropna()
-                if len(close_data) >= 2: latest_close, prev_close = close_data.iloc[-1], close_data.iloc[0]
-                else: latest_close, prev_close = close_data.iloc[-1] if not close_data.empty else 0
+                latest_close = close_data.iloc[-1] if not close_data.empty else 0
+                prev_close = close_data.iloc[0] if len(close_data) >= 2 else latest_close
                 change_percent = ((latest_close - prev_close) / prev_close) * 100 if prev_close != 0 else 0
                 symbol_display = ticker_code.replace('.IS', '').replace('XU100', 'BIST100')
-                summary_data.append({'symbol': symbol_display, 'price': f"{latest_close:,.2f}", 'change': f"{change_percent:+.2f}%", 'color': 'green' if change_percent > 0 else ('red' if change_percent < 0 else 'gray')})
+                summary_data.append({
+                    'symbol': symbol_display, 
+                    'price': f"{latest_close:,.2f}", 
+                    'change': f"{change_percent:+.2f}%", 
+                    'color': 'green' if change_percent > 0 else 'red'
+                })
         return jsonify(summary_data)
-    except: return jsonify([{'symbol': 'HATA', 'price': '-', 'change': '-', 'color': 'red'}])
-
-def get_top_list_data(reverse_sort=True, sort_by='change'):
-    bist100_tickers = ['AKBNK.IS', 'ARCLK.IS', 'ASELS.IS', 'BIMAS.IS', 'EKGYO.IS', 'EREGL.IS', 'FROTO.IS', 'GARAN.IS', 'GOLTS.IS', 'HEKTS.IS', 'ISCTR.IS', 'KCHOL.IS', 'KOZAL.IS', 'KRDMD.IS', 'MGROS.IS', 'ODAS.IS', 'PETKM.IS', 'PGSUS.IS', 'SAHOL.IS', 'SASA.IS', 'SISE.IS', 'TAVHL.IS', 'TCELL.IS', 'THYAO.IS', 'TOASO.IS', 'TUPRS.IS', 'YKBNK.IS', 'HALKB.IS', 'VAKBN.IS', 'CCOLA.IS', 'DOHOL.IS']
-    final_list = []
-    try:
-        data_price = yf.download(bist100_tickers, period="2d", interval="1d")
-        data_volume = yf.download(bist100_tickers, period="1d", interval="1h")
-        for ticker_code in bist100_tickers:
-            if ticker_code in data_price['Close']:
-                close_data = data_price['Close'][ticker_code].dropna()
-                volume_data = data_volume['Volume'][ticker_code].dropna()
-                latest_close = close_data.iloc[-1] if not close_data.empty else 0
-                prev_close = close_data.iloc[-2] if len(close_data) >=2 else latest_close
-                change_percent = ((latest_close - prev_close) / prev_close) * 100 if prev_close != 0 else 0
-                latest_volume = volume_data.iloc[-1] if not volume_data.empty else 0
-                hisse_info = yf.Ticker(ticker_code).info
-                price = hisse_info.get('regularMarketPrice', latest_close)
-                volume_tl = latest_volume * price if latest_volume > 0 else 0
-                final_list.append({'symbol': ticker_code.replace('.IS', ''), 'price': f"{latest_close:,.2f}", 'change': change_percent, 'change_display': f"{change_percent:+.2f}%", 'volume_value': volume_tl, 'volume_display': f"{volume_tl / 1000000:,.2f} M ₺"})
-        if sort_by == 'change': sorted_list = sorted(final_list, key=lambda x: x['change'], reverse=reverse_sort)
-        else: sorted_list = sorted(final_list, key=lambda x: x['volume_value'], reverse=reverse_sort)
-        return sorted_list[:15]
-    except: return []
-
-@app.route('/top_gainers')
-def top_gainers(): return render_template('gainers.html', gainers=get_top_list_data(reverse_sort=True, sort_by='change'))
-@app.route('/top_losers')
-def top_losers(): return render_template('losers.html', losers=get_top_list_data(reverse_sort=False, sort_by='change'))
-@app.route('/top_volume')
-def top_volume(): return render_template('volume.html', volumes=get_top_list_data(reverse_sort=True, sort_by='volume'))
+    except: return jsonify([])
 
 @app.route('/', methods=['GET', 'POST'])
 def home():
@@ -147,78 +120,65 @@ def home():
     if request.method == 'POST' and 'sembol' in request.form:
         try:
             sembol = request.form.get('sembol').upper()
+            if not sembol: sembol = "AKBNK" # Boş bırakılırsa AKBNK yap
             arama_kodu = sembol if ".IS" in sembol else sembol + ".IS"
+            
             hisse = yf.Ticker(arama_kodu)
             df = hisse.history(period="6mo")
-            if df.empty: raise ValueError("Veri yok")
+            if df.empty: raise ValueError()
+            
             guncel_fiyat = df['Close'].iloc[-1]
             df['RSI'] = rsi_hesapla(df)
             guncel_rsi = df['RSI'].iloc[-1]
             macd_data = macd_hesapla(df)
+            
             bilgi = hisse.info
-            fk_val = bilgi.get('trailingPE')
-            pddd_val = bilgi.get('priceToBook')
+            fk = bilgi.get('trailingPE')
+            pddd = bilgi.get('priceToBook')
+            
             puan = 0
             if guncel_rsi < 30: puan += 1
             if macd_data['MACD_Line'].iloc[-1] > macd_data['Signal_Line'].iloc[-1]: puan += 1
-            if fk_val and fk_val < 10: puan += 1
-            if pddd_val and pddd_val < 2: puan += 1
+            if fk and fk < 10: puan += 1
+            if pddd and pddd < 2: puan += 1
+            
             sinyal_yorum = ["SAT 🔴", "SAT 🔴", "NÖTR 🟠", "AL 🟡", "GÜÇLÜ AL 🟢"][puan]
+            ai_summary = get_ai_summary(sembol, puan, guncel_rsi, safe_format_ratio(fk), safe_format_ratio(pddd))
             
-            # AI Ozet Fonksiyonunu Cagiriyoruz
-            ai_summary = get_ai_summary(sembol, puan, guncel_rsi, safe_format_ratio(fk_val), safe_format_ratio(pddd_val))
-            
-            chart_data_list = [{'x': index.value // 10**6, 'y': [row['Open'], row['High'], row['Low'], row['Close']]} for index, row in df.iterrows()]
             sonuc = {
-                'isim': sembol, 
-                'fiyat': f"{guncel_fiyat:.2f}", 
-                'fk': safe_format_ratio(fk_val), 
-                'pddd': safe_format_ratio(pddd_val), 
-                'rsi': f"{guncel_rsi:.2f}", 
-                'puan': puan, 
-                'sinyal_yorum': sinyal_yorum, 
-                'sinyal_rsi_renk': 'green' if guncel_rsi < 30 else 'red', 
-                'macd_line': f"{macd_data['MACD_Line'].iloc[-1]:.2f}", 
-                'signal_line': f"{macd_data['Signal_Line'].iloc[-1]:.2f}", 
-                'sinyal_macd_renk': 'green' if macd_data['MACD_Line'].iloc[-1] > macd_data['Signal_Line'].iloc[-1] else 'red'
+                'isim': sembol, 'fiyat': f"{guncel_fiyat:.2f}", 
+                'fk': safe_format_ratio(fk), 'pddd': safe_format_ratio(pddd), 
+                'rsi': f"{guncel_rsi:.2f}", 'puan': puan, 'sinyal_yorum': sinyal_yorum
             }
-        except Exception: 
-            sonuc = {'hata': "Veri çekilemedi."}
-            ai_summary = "Veri hatası nedeniyle analiz yapılamadı."
+        except:
+            sonuc = {'hata': "Hisse bulunamadı."}
             
-    return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
+    return render_template('index.html', veri=sonuc, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (YEDEKLI SISTEM + AKBNK CONTEXT) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
-    user_message = data.get('message')
+    msg = data.get('message', '')
     
-    # Kullanici bos bos 'analiz et' derse varsayilan olarak AKBNK anlasin
-    system_prompt = "Sen borsa asistanısın. Türkçe konuş."
-    if "akbnk" in user_message.lower() or "banka" in user_message.lower():
-         system_prompt += " Özellikle bankacılık hisseleri ve AKBNK konusunda uzman bir dille cevap ver."
+    # AKBNK bağlamı eklenmiş sistem mesajı [cite: 38]
+    sys_msg = "Sen uzman borsa asistanısın. AKBNK ve bankacılık hisselerinde çok bilgilisin. Türkçe cevap ver."
     
-    for model_name in MODELS_TO_TRY:
+    for model in MODELS_TO_TRY:
         try:
-            print(f"Denenen Model: {model_name}") 
-            completion = client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
+            print(f"💬 Sohbet deneniyor: {model}")
+            res = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "system", "content": sys_msg}, {"role": "user", "content": msg}],
+                timeout=15,
                 extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
             )
-            return jsonify({'reply': completion.choices[0].message.content})
-        except Exception as e:
-            error_msg = str(e)
-            print(f"HATA ({model_name}): {error_msg}")
-            
-            if "401" in error_msg:
-                 return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
-            
-            time.sleep(1) # Hata toleransi beklemesi
+            if res.choices[0].message.content:
+                return jsonify({'reply': res.choices[0].message.content})
+        except:
+            time.sleep(1)
             continue
 
-    return jsonify({'reply': "⚠️ Şu an tüm AI modelleri aşırı yoğun. Lütfen 30 saniye sonra tekrar deneyin."})
+    return jsonify({'reply': "⚠️ AI şu an yoğun. Lütfen 30 sn sonra tekrar dene."})
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0')
