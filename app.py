@@ -1,4 +1,4 @@
-# --- V14.0 FINAL: EFSANE GERI DONDU (OPENROUTER YEDEKLI SISTEM) ---
+# --- V14.1 FINAL: AKBNK OZEL & FAILOVER SISTEMI ---
 from flask import Flask, render_template, request, jsonify, send_file
 import yfinance as yf
 import pandas as pd
@@ -17,10 +17,10 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1"
 )
 
-# --- DENENECEK MODELLER LISTESI (HIZLIDAN YAVASA) ---
+# --- DENENECEK MODELLER LISTESI (Yedekleme Sirasi) ---
 MODELS_TO_TRY = [
-    "google/gemini-2.0-flash-exp:free",       # 1. En Hizli/Yeni
-    "google/gemini-2.0-flash-thinking-exp:free", # 2. Dusunen Model
+    "google/gemini-2.0-flash-exp:free",      # 1. En Hizli
+    "google/gemini-2.0-flash-thinking-exp:free", # 2. Dusunen
     "mistralai/mistral-7b-instruct:free",      # 3. Klasik
     "meta-llama/llama-3-8b-instruct:free",     # 4. Alternatif
     "microsoft/phi-3-mini-128k-instruct:free"  # 5. Yedek
@@ -48,14 +48,17 @@ def macd_hesapla(veri, fast=12, slow=26, signal=9):
     return veri
 
 def get_ai_summary(sembol, puan, rsi, fk, pddd):
+    # Prompt AKBNK vurgusuyla guclendirildi
     prompt = f"""
-    Sen uzman bir Borsa ve Temel/Teknik analistsin. Sadece Türkçe, kesin, mantıklı ve tek bir paragraf halinde, 60 kelimeyi geçmeyecek şekilde şu analiz sonuçlarını yorumla:
+    Sen uzman bir Borsa ve Temel/Teknik analistsin. (Örnek hisse analizi stilimiz AKBNK gibidir).
+    Sadece Türkçe, kesin, mantıklı ve tek bir paragraf halinde, 60 kelimeyi geçmeyecek şekilde şu analiz sonuçlarını yorumla:
     Hisse: {sembol}
     Algoritmik Puan (4 Üzerinden): {puan}
     RSI Değeri: {rsi:.2f}
     F/K Oranı: {fk}
     P/DD Oranı: {pddd}
-    Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt ve buna göre yorum yap. Eğer oranlar ' - ' ise, yorum yapma.
+    Yorum yaparken; F/K oranının 10'un altı ve P/DD oranının 2'nin altı olmasının güçlü pozitif temel sinyaller olduğunu kesinlikle belirt.
+    Eğer veriler ' - ' ise yorum yapma.
     """
     
     for model in MODELS_TO_TRY:
@@ -70,9 +73,10 @@ def get_ai_summary(sembol, puan, rsi, fk, pddd):
             )
             return completion.choices[0].message.content
         except:
-            time.sleep(1) # Hata alirsa 1 saniye bekle
+            time.sleep(1) # Hata alirsa 1 saniye bekle ve diger modele gec
             continue
             
+    # Hicbir model cevap vermezse donecek metin:
     return "Otomatik analiz özeti şu an alınamıyor (Sunucular yoğun)."
 
 # --- ROUTE'LAR ---
@@ -91,7 +95,8 @@ def download_csv(sembol):
 
 @app.route('/market_summary', methods=['GET'])
 def market_summary():
-    tickers = ['XU100.IS', 'AKBNK.IS', 'ARCLK.IS', 'ASELS.IS', 'BIMAS.IS', 'EKGYO.IS', 'EREGL.IS', 'FROTO.IS', 'GARAN.IS', 'GOLTS.IS', 'HEKTS.IS', 'ISCTR.IS', 'KCHOL.IS', 'KOZAL.IS', 'KRDMD.IS', 'MGROS.IS', 'ODAS.IS', 'PETKM.IS', 'PGSUS.IS', 'SAHOL.IS', 'SASA.IS', 'SISE.IS', 'TAVHL.IS', 'TCELL.IS', 'THYAO.IS', 'TOASO.IS', 'TUPRS.IS', 'YKBNK.IS', 'HALKB.IS', 'VAKBN.IS']
+    # AKBNK en basa alindi
+    tickers = ['XU100.IS', 'AKBNK.IS', 'GARAN.IS', 'THYAO.IS', 'ISCTR.IS', 'YKBNK.IS', 'ARCLK.IS', 'ASELS.IS', 'BIMAS.IS', 'EKGYO.IS', 'EREGL.IS', 'FROTO.IS', 'GOLTS.IS', 'HEKTS.IS', 'KCHOL.IS', 'KOZAL.IS', 'KRDMD.IS', 'MGROS.IS', 'ODAS.IS', 'PETKM.IS', 'PGSUS.IS', 'SAHOL.IS', 'SASA.IS', 'SISE.IS', 'TAVHL.IS', 'TCELL.IS', 'TOASO.IS', 'TUPRS.IS', 'HALKB.IS', 'VAKBN.IS']
     summary_data = []
     try:
         data = yf.download(tickers, period="2d", interval="1h")
@@ -159,7 +164,10 @@ def home():
             if fk_val and fk_val < 10: puan += 1
             if pddd_val and pddd_val < 2: puan += 1
             sinyal_yorum = ["SAT 🔴", "SAT 🔴", "NÖTR 🟠", "AL 🟡", "GÜÇLÜ AL 🟢"][puan]
+            
+            # AI Ozet Fonksiyonunu Cagiriyoruz
             ai_summary = get_ai_summary(sembol, puan, guncel_rsi, safe_format_ratio(fk_val), safe_format_ratio(pddd_val))
+            
             chart_data_list = [{'x': index.value // 10**6, 'y': [row['Open'], row['High'], row['Low'], row['Close']]} for index, row in df.iterrows()]
             sonuc = {
                 'isim': sembol, 
@@ -176,21 +184,27 @@ def home():
             }
         except Exception: 
             sonuc = {'hata': "Veri çekilemedi."}
-            ai_summary = "Hata."
+            ai_summary = "Veri hatası nedeniyle analiz yapılamadı."
+            
     return render_template('index.html', veri=sonuc, chart_data=chart_data, ai_summary=ai_summary)
 
-# --- CHATBOT ROUTE (YEDEKLI SISTEM) ---
+# --- CHATBOT ROUTE (YEDEKLI SISTEM + AKBNK CONTEXT) ---
 @app.route('/api/chat', methods=['POST'])
 def chat():
     data = request.get_json()
     user_message = data.get('message')
+    
+    # Kullanici bos bos 'analiz et' derse varsayilan olarak AKBNK anlasin
+    system_prompt = "Sen borsa asistanısın. Türkçe konuş."
+    if "akbnk" in user_message.lower() or "banka" in user_message.lower():
+         system_prompt += " Özellikle bankacılık hisseleri ve AKBNK konusunda uzman bir dille cevap ver."
     
     for model_name in MODELS_TO_TRY:
         try:
             print(f"Denenen Model: {model_name}") 
             completion = client.chat.completions.create(
                 model=model_name,
-                messages=[{"role": "system", "content": "Sen borsa asistanısın. Türkçe konuş."}, {"role": "user", "content": user_message}],
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_message}],
                 extra_headers={"HTTP-Referer": "https://borsacin.com", "X-Title": "BorsaBot"}
             )
             return jsonify({'reply': completion.choices[0].message.content})
@@ -201,7 +215,7 @@ def chat():
             if "401" in error_msg:
                  return jsonify({'reply': "⚠️ HATA: Render'daki ŞİFRE YANLIŞ! Kontrol et."})
             
-            time.sleep(1) # Spam olmamasi icin bekle
+            time.sleep(1) # Hata toleransi beklemesi
             continue
 
     return jsonify({'reply': "⚠️ Şu an tüm AI modelleri aşırı yoğun. Lütfen 30 saniye sonra tekrar deneyin."})
